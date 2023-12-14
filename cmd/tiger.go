@@ -14,7 +14,7 @@ func init() {
 var rootCmd = &cobra.Command{
 	Use:   "tiger",
 	Short: "顶级IM系统",
-	Run:   Plato,
+	Run:   tiger,
 }
 
 func Execute() {
@@ -24,7 +24,7 @@ func Execute() {
 	}
 }
 
-func Plato(cmd *cobra.Command, args []string) {
+func tiger(cmd *cobra.Command, args []string) {
 
 }
 
