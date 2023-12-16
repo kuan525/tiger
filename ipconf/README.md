@@ -10,6 +10,13 @@ code流程：
 9. 在hertz中，读取map中数据，通过调度获取top5
 
 
+- 每个endport都是一个网关机
+- 一个网关机中保存了stats和window，为了分层，并且充分保证了异步，利用了go的优势
+- 利用window中的channel监听event事件，保存最近的五次，并不断更新stats
+- 在访问请求的时候，每次动态的计算最终的静态分和动态分
+- 这里的嵌入结构体的方式，更多的是为了分层，架构目的
+
+
 运行：
 1. etcd
 2. go build && ./tiger ipconf --config=./tiger.yaml
