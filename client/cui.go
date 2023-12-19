@@ -5,10 +5,11 @@ import (
 	"io/ioutil"
 	"log"
 	"math/rand"
+	"net"
 	"time"
 
 	"github.com/gookit/color"
-	"github.com/kuan525/tiger/client/sdk"
+	"github.com/kuan525/tiger/common/sdk"
 	"github.com/rocket049/gocui"
 )
 
@@ -228,7 +229,7 @@ func pasteDown(g *gocui.Gui, cv *gocui.View) error {
 
 func RunMain() {
 	// step1 创建chat的核心对象
-	chat = sdk.NewChat("127.0.0.1:8080", "kuan", "12312321", "2131")
+	chat = sdk.NewChat(net.ParseIP("127.0.0.1"), 8090, "kuan", "12312321", "2131")
 	// step2 创建GUI图层对象并进行参与与回调函数的配置
 	g, err := gocui.NewGui(gocui.OutputNormal)
 	if err != nil {
@@ -264,7 +265,6 @@ func RunMain() {
 
 	// 启动消费函数
 	go doRecv(g)
-
 	if err := g.MainLoop(); err != nil {
 		log.Println(err)
 	}
