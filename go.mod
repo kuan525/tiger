@@ -6,6 +6,7 @@ require (
 	github.com/bytedance/gopkg v0.0.0-20230728082804-614d0af6619b
 	github.com/cloudwego/hertz v0.7.3
 	github.com/gookit/color v1.5.4
+	github.com/panjf2000/ants v1.3.0
 	github.com/rocket049/gocui v0.3.2
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.18.1
