@@ -14,7 +14,7 @@ import (
 // 启动网关服务 [配置文件路径]
 func RunMain(path string) {
 	config.Init(path)
-	ln, err := net.ListenTCP("tcp", &net.TCPAddr{Port: config.GetGatewayServerPort()})
+	ln, err := net.ListenTCP("tcp", &net.TCPAddr{Port: config.GetGatewayTCPServerPort()})
 	if err != nil {
 		log.Fatalf("StartTCPEPollServer err:%s", err.Error())
 		panic(err)
@@ -26,17 +26,17 @@ func RunMain(path string) {
 	select {}
 }
 
-func runProc(c *connection, ep *epoller) {
+func runProc(c *connection, eper *epoller) {
 	// step1: 读取一个完整的包
 	dataBuf, err := tcp.ReadData(c.conn)
 	if err != nil {
 		// 如果读取conn时发现连接关闭，则直接关闭端口连接
 		if errors.Is(err, io.EOF) {
-			ep.remove(c)
+			eper.remove(c)
 		}
 		return
 	}
-	err = wPoll.Submit(func() {
+	err = wPool.Submit(func() {
 		// step2:交给state server rpc处理
 		bytes := tcp.DataPkg{
 			Len:  uint32(len(dataBuf)),

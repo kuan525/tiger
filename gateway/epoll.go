@@ -66,16 +66,16 @@ func (e *ePool) createAcceptProcess() {
 	for i := 0; i < runtime.NumCPU(); i++ {
 		go func() {
 			for {
-				conn, e := e.ln.AcceptTCP()
+				conn, err := e.ln.AcceptTCP()
 				// 限流熔断
 				if !checkTcp() {
 					_ = conn.Close()
 					continue
 				}
 				setTcpConfig(conn)
-				if e != nil {
-					if ne, ok := e.(net.Error); ok && ne.Temporary() {
-						fmt.Errorf("accept temp err: %v", ne)
+				if err != nil {
+					if nerr, ok := err.(net.Error); ok && nerr.Temporary() {
+						fmt.Errorf("accept temp err: %v", nerr)
 						continue
 					}
 					fmt.Errorf("accept err: %v", e)
@@ -84,7 +84,7 @@ func (e *ePool) createAcceptProcess() {
 					conn: conn,
 					fd:   socketFD(conn),
 				}
-				ep.addTask(&c)
+				e.addTask(&c)
 			}
 		}()
 	}
@@ -102,7 +102,7 @@ func (e *ePool) startEPool() {
 
 // 轮训器池 处理器
 func (e *ePool) startEProc() {
-	ep, err := newEpoller()
+	eper, err := newEpoller()
 	if err != nil {
 		panic(err)
 	}
@@ -114,7 +114,7 @@ func (e *ePool) startEProc() {
 			case conn := <-e.eChan:
 				addTcpNum()
 				fmt.Printf("tcpNum:%d\n", getTcpNum())
-				if err := ep.add(conn); err != nil {
+				if err := eper.add(conn); err != nil {
 					fmt.Printf("failed to add connection %v\n", err)
 					conn.Close() //登陆未成功直接关闭连接
 					continue
@@ -129,7 +129,7 @@ func (e *ePool) startEProc() {
 		case <-e.done:
 			return
 		default:
-			connections, err := ep.wait(200) // 200ms一次轮训避免忙轮训
+			connections, err := eper.wait(200) // 200ms一次轮训避免忙轮训
 
 			if err != nil && err != syscall.EINTR {
 				fmt.Printf("failed to epoll wait %v\n", err)
@@ -139,7 +139,7 @@ func (e *ePool) startEProc() {
 				if conn == nil {
 					break
 				}
-				e.f(conn, ep)
+				e.f(conn, eper)
 			}
 		}
 	}
@@ -170,9 +170,9 @@ func (e *epoller) add(conn *connection) error {
 	return nil
 }
 
-func (e *epoller) remove(c *connection) error {
+func (e *epoller) remove(conn *connection) error {
 	subTcpNum()
-	fd := c.fd
+	fd := conn.fd
 	err := unix.EpollCtl(e.fd, syscall.EPOLL_CTL_DEL, fd, nil)
 	if err != nil {
 		return err
