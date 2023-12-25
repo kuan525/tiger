@@ -70,7 +70,8 @@ func (p *PClient) dial() (*grpc.ClientConn, error) {
 		grpc.WithInsecure(),
 	}
 
-	ctx, _ := context.WithTimeout(context.Background(), dialTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
+	defer cancel()
 
 	return grpc.DialContext(ctx, fmt.Sprintf("discov:///%v", p.serviceName), options...)
 }
