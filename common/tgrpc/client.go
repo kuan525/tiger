@@ -27,7 +27,7 @@ type PClient struct {
 	conn         *grpc.ClientConn
 }
 
-func NewPClient(serviceName string, interceptors ...grpc.UnaryClientInterceptor) (*PClient, error) {
+func NewClient(serviceName string, interceptors ...grpc.UnaryClientInterceptor) (*PClient, error) {
 	p := &PClient{
 		serviceName:  serviceName,
 		interceptors: interceptors,

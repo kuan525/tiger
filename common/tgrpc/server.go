@@ -72,7 +72,7 @@ func WithHealth(health bool) ServerOption {
 	}
 }
 
-func NewPServer(opts ...ServerOption) *PServer {
+func NewServer(opts ...ServerOption) *PServer {
 	opt := serverOptions{}
 	for _, o := range opts {
 		o(&opt)

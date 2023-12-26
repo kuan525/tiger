@@ -14,7 +14,7 @@ prpc:
   trace:
     enable: true
     url: http://127.0.0.1:14268/api/traces
-    service_name: tiger
+    service_name: plato
     sampler: 1.0
 gateway:
   service_name: "tiger.access.gateway"
@@ -23,14 +23,14 @@ gateway:
   epoll_channel_num: 100
   epoll_num: 8
   epoll_wait_queue_size: 100
-  tpc_server_port: 8900
+  tcp_server_port: 8900
   rpc_server_port: 8901
-  worker_poll_num: 1024
+  worker_pool_num: 1024
   cmd_channel_num: 2048
   weight: 100
-state:
+state: 
   service_name: "tiger.access.state"
-  service_addr: "127.0.0.1"
+  servide_addr: "127.0.0.1"
   cmd_channel_num: 2048
   server_port: 8902
   weight: 100
