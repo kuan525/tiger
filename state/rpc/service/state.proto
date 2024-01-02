@@ -12,7 +12,7 @@ service state {
 
 message StateRequest{
     string endpoint = 1;
-    int32 fd = 2;
+    uint64 connID = 2;
     bytes data = 3;
 }
 

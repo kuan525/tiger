@@ -11,8 +11,8 @@ type CmdContext struct {
 	Ctx      *context.Context
 	Cmd      int32
 	Endpoint string
-	FD       int
-	PlayLoad []byte
+	ConnID   uint64
+	PayLoad  []byte
 }
 
 type Service struct {
@@ -24,7 +24,7 @@ func (s *Service) CancelConn(ctx context.Context, sr *StateRequest) (*StateRespo
 	s.CmdChannel <- &CmdContext{
 		Ctx:      &c,
 		Cmd:      CancelConnCmd,
-		FD:       int(sr.GetFd()),
+		ConnID:   sr.ConnID,
 		Endpoint: sr.GetEndpoint(),
 	}
 	return &StateResponse{
@@ -38,9 +38,9 @@ func (s *Service) SendMsg(ctx context.Context, sr *StateRequest) (*StateResponse
 	s.CmdChannel <- &CmdContext{
 		Ctx:      &c,
 		Cmd:      SendMsgCmd,
-		FD:       int(sr.GetFd()),
+		ConnID:   sr.ConnID,
 		Endpoint: sr.GetEndpoint(),
-		PlayLoad: sr.GetData(),
+		PayLoad:  sr.GetData(),
 	}
 	return &StateResponse{
 		Code: 0,

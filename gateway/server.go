@@ -58,13 +58,13 @@ func runProc(c *connection, eper *epoller) {
 		if errors.Is(err, io.EOF) {
 			// 这个操作是异步的，不需要等到返回成功再执行，因为消息可靠性的保障是通过协议完成的而非某次cmd
 			eper.remove(c)
-			client.CancelConn(&ctx, getEndpoint(), int32(c.fd), nil)
+			client.CancelConn(&ctx, getEndpoint(), c.id, nil)
 		}
 		return
 	}
 	err = wPool.Submit(func() {
 		// step2:交给state server rpc处理
-		client.SendMsg(&ctx, getEndpoint(), int32(c.fd), dataBuf)
+		client.SendMsg(&ctx, getEndpoint(), c.id, dataBuf)
 	})
 	if err != nil {
 		fmt.Errorf("runProc:err:%+v\n", err.Error())
@@ -86,19 +86,18 @@ func cmdHandler() {
 }
 
 func closeConn(cmd *service.CmdContext) {
-	if connPtr, ok := ep.tables.Load(cmd.FD); ok {
+	if connPtr, ok := ep.tables.Load(cmd.ConnID); ok {
 		conn, _ := connPtr.(*connection)
 		conn.Close()
-		ep.tables.Delete(cmd.FD)
 	}
 }
 
 func sendMsgByCmd(cmd *service.CmdContext) {
-	if connPtr, ok := ep.tables.Load(cmd.FD); ok {
+	if connPtr, ok := ep.tables.Load(cmd.ConnID); ok {
 		conn, _ := connPtr.(*connection)
 		dp := tcp.DataPkg{
-			Len:  uint32(len(cmd.Playload)),
-			Data: cmd.Playload,
+			Len:  uint32(len(cmd.Payload)),
+			Data: cmd.Payload,
 		}
 		tcp.SendData(conn.conn, dp.Marshal())
 	}
