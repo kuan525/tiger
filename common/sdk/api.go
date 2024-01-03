@@ -1,7 +1,9 @@
 package sdk
 
 import (
+	"encoding/json"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/kuan525/tiger/common/idl/message"
@@ -18,11 +20,13 @@ const (
 )
 
 type Chat struct {
-	Nick      string
-	UserID    string
-	SessionId string
-	conn      *connect
-	closeChan chan struct{}
+	Nick             string
+	UserID           string
+	SessionId        string
+	conn             *connect
+	closeChan        chan struct{}
+	MsgClientIDTable map[string]uint64
+	sync.RWMutex
 }
 
 type Message struct {
@@ -34,27 +38,36 @@ type Message struct {
 	Session    string
 }
 
-func NewChat(ip net.IP, port int, nick, userID, sessionID string, connID uint64, isReConn bool) *Chat {
+func NewChat(ip net.IP, port int, nick, userID, sessionID string) *Chat {
 	chat := &Chat{
-		Nick:      nick,
-		UserID:    userID,
-		SessionId: sessionID,
-		conn:      newConnet(ip, port, connID),
-		closeChan: make(chan struct{}),
+		Nick:             nick,
+		UserID:           userID,
+		SessionId:        sessionID,
+		conn:             newConnet(ip, port),
+		closeChan:        make(chan struct{}),
+		MsgClientIDTable: make(map[string]uint64),
 	}
 	go chat.loop()
-	if isReConn {
-		chat.reConn(connID)
-	} else {
-		chat.login()
-	}
+
+	chat.login()
+
 	go chat.heartbeat()
 	return chat
 }
 
 func (chat *Chat) Send(msg *Message) {
 	// chat.conn.send(msg)
-	chat.conn.recvChan <- msg
+	// chat.conn.recvChan <- msg
+	data, _ := json.Marshal(msg)
+	upMsg := &message.UPMsg{
+		Head: &message.UPMsgHead{
+			ClientID: chat.getClientID(msg.Session),
+			ConnID:   chat.conn.connID,
+		},
+		UPMsgBody: data,
+	}
+	payload, _ := proto.Marshal(upMsg)
+	chat.conn.send(message.CmdType_UP, payload)
 }
 
 func (chat *Chat) Recv() <-chan *Message {
@@ -68,11 +81,15 @@ func (chat *Chat) Close() {
 	close(chat.conn.sendChan)
 }
 
-func (chat *Chat) GetConnID() uint64 {
-	return chat.conn.connID
+func (chat *Chat) ReConn() {
+	chat.Lock()
+	defer chat.Unlock()
+	chat.conn.reConn()
+	chat.reConn()
 }
 
 func (chat *Chat) loop() {
+Loop:
 	for {
 		select {
 		case <-chat.closeChan:
@@ -81,7 +98,7 @@ func (chat *Chat) loop() {
 			mc := &message.MsgCmd{}
 			data, err := tcp.ReadData(chat.conn.conn)
 			if err != nil {
-				return
+				goto Loop
 			}
 			err = proto.Unmarshal(data, mc)
 			if err != nil {
@@ -91,10 +108,24 @@ func (chat *Chat) loop() {
 			switch message.CmdType_ACK {
 			case message.CmdType_ACK:
 				msg = handAckMsg(chat.conn, mc.Payload)
+			case message.CmdType_Push:
+				msg = handPushMsg(chat.conn, mc.Payload)
 			}
 			chat.conn.recvChan <- msg
 		}
 	}
+}
+
+func (chat *Chat) getClientID(sessionID string) uint64 {
+	chat.Lock()
+	defer chat.Unlock()
+	var res uint64
+	if id, ok := chat.MsgClientIDTable[sessionID]; ok {
+		res = id
+	}
+	res++
+	chat.MsgClientIDTable[sessionID] = res
+	return res
 }
 
 func (chat *Chat) login() {
@@ -108,9 +139,9 @@ func (chat *Chat) login() {
 	chat.conn.send(message.CmdType_Login, payLoad)
 }
 
-func (chat *Chat) reConn(connID uint64) {
+func (chat *Chat) reConn() {
 	reConn := message.ReConnMsg{
-		Head: &message.ReConnMsgHead{ConnID: connID},
+		Head: &message.ReConnMsgHead{ConnID: chat.conn.connID},
 	}
 	payLoad, err := proto.Marshal(&reConn)
 	if err != nil {

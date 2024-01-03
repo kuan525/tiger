@@ -11,12 +11,32 @@ enum CmdType {
     Heartbeat = 1;
     ReConn = 2;
     ACK = 3;
+    UP = 4; // 上行消息
+    Push = 5; // 下行，推送消息
 }
 
 // 顶层cmd pb结构
 message MsgCmd {
     CmdType Type = 1;
     bytes Payload = 2;
+}
+
+// 上行消息 pb结构
+message UPMsg{
+    UPMsgHead Head = 1;
+    bytes UPMsgBody = 2;
+}
+
+// 上行消息头 pb结构
+message UPMsgHead{
+    uint64 ClientID = 1;
+    uint64 ConnID = 2;
+}
+
+// 推送消息
+message PushMsg{
+    uint64 MsgID = 1;
+    bytes Content = 2;
 }
 
 // 登陆消息
@@ -29,11 +49,13 @@ message LoginMsg {
     bytes LoginMsgBody = 2;
 }
 
+// ACK消息
 message ACKMsg {
     uint32 code = 1;
     string msg = 2;
     CmdType Type = 3;
     uint64 ConnID = 4;
+    uint64 CLientID = 5;
 }
 
 // 心跳消息
