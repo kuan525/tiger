@@ -36,7 +36,8 @@ message UPMsgHead{
 // 推送消息
 message PushMsg{
     uint64 MsgID = 1;
-    bytes Content = 2;
+    uint64 SessionID = 2;
+    bytes Content = 3;
 }
 
 // 登陆消息
@@ -55,7 +56,9 @@ message ACKMsg {
     string msg = 2;
     CmdType Type = 3;
     uint64 ConnID = 4;
-    uint64 CLientID = 5;
+    uint64 ClientID = 5;
+    uint64 SessionID = 6;
+    uint64 MsgID = 7;
 }
 
 // 心跳消息

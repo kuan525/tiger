@@ -35,3 +35,6 @@ func GetGatewayServiceName() string {
 func GetGatewayRPCWeight() int {
 	return viper.GetInt("gateway.Weight")
 }
+func GetGatewayStateServerEndPoint() string {
+	return viper.GetString("gateway.state_server_endpoint")
+}

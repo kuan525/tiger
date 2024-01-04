@@ -3,8 +3,6 @@ package state
 import (
 	"context"
 	"fmt"
-	"sync"
-	"time"
 
 	"github.com/kuan525/tiger/common/config"
 	"github.com/kuan525/tiger/common/idl/message"
@@ -16,45 +14,53 @@ import (
 )
 
 func RunMain(path string) {
+	// 启动时的全局上下文
+	ctx := context.TODO()
+	// 初始化全局配置
 	config.Init(path)
-	cmdChannel = make(chan *service.CmdContext, config.GetStateCmdChannelNum())
-	connToStateTable = sync.Map{}
+	// 初始化RPC 客户端
+	client.Init()
+	// 启动时间轮
+	InitTimer()
+	// 启动远程cache状态机组件
+	InitCacheState(ctx)
+	// 启动 命令处理写协程
+	go cmdHandler()
 
+	// 注册rpc server
 	s := tgrpc.NewServer(
 		tgrpc.WithServiceName(config.GetStateServiceName()),
-		tgrpc.WithIP(config.GetStateServiceAddr()),
+		tgrpc.WithIP(config.GetStateServiceName()),
 		tgrpc.WithPort(config.GetStateServicePort()),
 		tgrpc.WithWeight(config.GetStateRPCWeight()))
 
 	s.RegisterService(func(server *grpc.Server) {
-		service.RegisterStateServer(server, &service.Service{CmdChannel: cmdChannel})
+		service.RegisterStateServer(server, cs.server)
 	})
-
-	client.Init()
-	// 启动时间轮
-	InitTimer()
-	go cmdHandler()
-	s.Start(context.TODO())
+	// 启动 rpc server
+	s.Start(ctx)
 }
 
+// 消费信令通道，识别gateway与state server之间的协议路由
 func cmdHandler() {
-	for cmdCtx := range cmdChannel {
+	for cmdCtx := range cs.server.CmdChannel {
 		switch cmdCtx.Cmd {
 		case service.CancelConnCmd:
-			fmt.Printf("cancelconn endpoint:%s, fd:%d, data:%+v", cmdCtx.Endpoint, cmdCtx.ConnID, cmdCtx.PayLoad)
+			fmt.Printf("cancel conn endpoint:%s, coonID:%d, data:%+v\n", cmdCtx.Endpoint, cmdCtx.ConnID, cmdCtx.PayLoad)
+			cs.connLogOut(*cmdCtx.Ctx, cmdCtx.ConnID)
 		case service.SendMsgCmd:
 			msgCmd := &message.MsgCmd{}
-
 			err := proto.Unmarshal(cmdCtx.PayLoad, msgCmd)
 			if err != nil {
 				fmt.Printf("SendMsgCmd:err=%s\n", err.Error())
 			}
-			msgCmdhandler(cmdCtx, msgCmd)
+			msgCmdHandler(cmdCtx, msgCmd)
 		}
 	}
 }
 
-func msgCmdhandler(cmdCtx *service.CmdContext, msgCmd *message.MsgCmd) {
+// 识别消息类型，识别客户端与state server之间的协议路由
+func msgCmdHandler(cmdCtx *service.CmdContext, msgCmd *message.MsgCmd) {
 	switch msgCmd.Type {
 	case message.CmdType_Login:
 		loginMsgHandler(cmdCtx, msgCmd)
@@ -69,23 +75,53 @@ func msgCmdhandler(cmdCtx *service.CmdContext, msgCmd *message.MsgCmd) {
 	}
 }
 
-// 处理下行消息
-func ackMsgHandler(cmdCtx *service.CmdContext, msgCmd *message.MsgCmd) {
-	ackMsg := &message.ACKMsg{}
-	err := proto.Unmarshal(msgCmd.Payload, ackMsg)
+func loginMsgHandler(cmdCtx *service.CmdContext, msgCmd *message.MsgCmd) {
+	loginMsg := &message.LoginMsg{}
+	err := proto.Unmarshal(msgCmd.Payload, loginMsg)
 	if err != nil {
-		fmt.Printf("ackMsgHandler:err=%s\n", err.Error())
+		fmt.Printf("loginMsgHandler:err=%s\n", err.Error())
 		return
 	}
-	if data, ok := connToStateTable.Load(ackMsg.ConnID); ok {
-		state, _ := data.(*connState)
-		state.Lock()
-		defer state.Unlock()
-		if state.msgTimer != nil {
-			state.msgTimer.Stop()
-			state.msgTimer = nil
-		}
+	if loginMsg.Head != nil {
+		// 这里会把 login msg 传送给业务层做处理
+		fmt.Println("loginMsgHandler", loginMsg.Head.DeviceID)
 	}
+	err = cs.connLogin(*cmdCtx.Ctx, loginMsg.Head.DeviceID, cmdCtx.ConnID)
+	if err != nil {
+		panic(err)
+	}
+	sendACKMsg(message.CmdType_Login, cmdCtx.ConnID, 0, 0, "login ok")
+}
+
+// 心跳消息的处理
+func hearbeatMsgHandler(cmdCtx *service.CmdContext, msgCmd *message.MsgCmd) {
+	heartMsg := &message.HeartbeatMsg{}
+	err := proto.Unmarshal(msgCmd.Payload, heartMsg)
+	if err != nil {
+		fmt.Printf("hearbeatMsgHandler:err=%s\n", err.Error())
+		return
+	}
+	cs.reSetHeartTimer(cmdCtx.ConnID)
+	fmt.Printf("hearbeatMsgHandler connID=%d\n", cmdCtx.ConnID)
+	// TODO未减少通信量，可以暂时不回复心跳的ack
+}
+
+// 重连逻辑处理
+func reConnMsgHandler(cmdCtx *service.CmdContext, msgCmd *message.MsgCmd) {
+	reConnMsg := &message.ReConnMsg{}
+	err := proto.Unmarshal(msgCmd.Payload, reConnMsg)
+	var code uint32
+	msg := "reconn ok"
+	if err != nil {
+		fmt.Printf("reConnMsgHandler:err=%s\n", err.Error())
+		return
+	}
+	// 重连的消息头中的connID才是上一次断开连接的connID
+	if err := cs.reConn(*cmdCtx.Ctx, reConnMsg.Head.ConnID, cmdCtx.ConnID); err != nil {
+		code, msg = 1, "reconn failed"
+		panic(err)
+	}
+	sendACKMsg(message.CmdType_ReConn, cmdCtx.ConnID, 0, code, msg)
 }
 
 // 处理上行消息，并进行消息可靠性检查
@@ -96,108 +132,52 @@ func upMsgHandler(cmdCtx *service.CmdContext, msgCmd *message.MsgCmd) {
 		fmt.Printf("upMsgHandler:err=%s\n", err.Error())
 		return
 	}
-	if data, ok := connToStateTable.Load(upMsg.Head.ConnID); ok {
-		state, _ := data.(*connState)
-		if state.checkUPMsg(upMsg.Head.ClientID) {
-			// 调用下游业务rpc，只有当rpc回复成功后才能更新max_clientID
-			// 这里先假设成功
-			state.addMaxClientID()
-			// TODO 这里构件下行消息发送过去 msg_id现在state中自增
-			state.msgID++
-			sendACKMsg(message.CmdType_UP, cmdCtx.ConnID, upMsg.Head.ClientID, 0, "ok")
-
-			// TODO 这里先push消息
-			pushMsg := &message.PushMsg{
-				MsgID:   state.msgID,
-				Content: upMsg.UPMsgBody, // 直接ping-pong
-			}
-			if data, err := proto.Marshal(pushMsg); err == nil {
-				sendMsg(state.connID, message.CmdType_Push, data)
-				if state.msgTimer != nil {
-					state.msgTimer.Stop()
-				}
-				// 创建定时器
-				t := AfterFunc(100*time.Millisecond, func() {
-					rePush(cmdCtx.ConnID, data)
-				})
-				state.msgTimer = t
-			} else {
-				fmt.Printf("Marshal:err=%s\n", err.Error())
-			}
-		}
-		// TODO 如果没有通过检查，当作先直接忽略即可
+	if cs.compareAndIncrClientID(*cmdCtx.Ctx, cmdCtx.ConnID, upMsg.Head.ClientID) {
+		// 调用下游业务层rpc，只有当rpc回复成功后才能更新max_clientID
+		sendACKMsg(message.CmdType_UP, cmdCtx.ConnID, upMsg.Head.ClientID, 0, "ok")
+		// TODO 这里应该调用业务层的代码
+		pushMsg(*cmdCtx.Ctx, cmdCtx.ConnID, cs.msgID, 0, upMsg.UPMsgBody)
 	}
 }
 
-func reConnMsgHandler(cmdCtx *service.CmdContext, msgCmd *message.MsgCmd) {
-	reConnMsg := &message.ReConnMsg{}
-	err := proto.Unmarshal(msgCmd.Payload, reConnMsg)
+// 处理下行消息ack回复
+func ackMsgHandler(cmdCtx *service.CmdContext, msgCmd *message.MsgCmd) {
+	ackMsg := &message.ACKMsg{}
+	err := proto.Unmarshal(msgCmd.Payload, ackMsg)
 	if err != nil {
-		fmt.Printf("reConnMsgHandler:err=%s\n", err.Error())
+		fmt.Printf("ackMsgHandler:err=%s\n", err.Error())
 		return
 	}
+	cs.ackLastMsg(*cmdCtx.Ctx, ackMsg.ConnID, ackMsg.SessionID, ackMsg.MsgID)
+}
 
-	// 重连的消息头中的connID才是上一次断开链接的connID
-	if data, ok := connToStateTable.Load(reConnMsg.Head.ConnID); ok {
-		state, _ := data.(*connState)
-		state.Lock()
-		defer state.Unlock()
-		//先停止定时任务的回调
-		if state.reConnTimer != nil {
-			state.reConnTimer.Stop()
-			state.reConnTimer = nil // 重连定时器被清除
-		}
-		// 从索引中删除旧的connID
-		connToStateTable.Delete(reConnMsg.Head.ConnID)
-		// 变更connID，cmdCTX中的connID才是gateway重连的新链接
-		state.connID = cmdCtx.ConnID
-		connToStateTable.Store(cmdCtx.ConnID, state)
-		sendACKMsg(message.CmdType_ReConn, cmdCtx.ConnID, 0, 0, "reconn ok")
+// 由业务层调用，下行消息处理
+func pushMsg(ctx context.Context, connID, sessionID, msgID uint64, data []byte) {
+	// TODO 先在这里push消息
+	pushMsg := &message.PushMsg{
+		Content: data,
+		MsgID:   cs.msgID,
+	}
+	if data, err := proto.Marshal(pushMsg); err != nil {
+		fmt.Printf("Marshal:err=%s\n", err.Error())
 	} else {
-		sendACKMsg(message.CmdType_ReConn, cmdCtx.ConnID, 0, 1, "reconn failed")
+		//TODO 这里就要涉及到 下行消息的下发了,不管成功与否，都要更新last msg
+		sendMsg(connID, message.CmdType_Push, data)
+		err = cs.appendlastmsg(ctx, connID, pushMsg)
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 
-func hearbeatMsgHandler(cmdCtx *service.CmdContext, msgCmd *message.MsgCmd) {
-	heartMsg := &message.HeartbeatMsg{}
-	err := proto.Unmarshal(msgCmd.Payload, heartMsg)
-	if err != nil {
-		fmt.Printf("hearbeatMsgHandler:err=%s\n", err.Error())
-		return
-	}
-	if data, ok := connToStateTable.Load(cmdCtx.ConnID); ok {
-		sate, _ := data.(*connState)
-		sate.reSetHeartTimer()
-	}
-	// 为减少通信量，可以暂时不回复心跳的ack
-}
-
-func loginMsgHandler(cmdCtx *service.CmdContext, msgCmd *message.MsgCmd) {
-	loginMsg := &message.LoginMsg{}
-	err := proto.Unmarshal(msgCmd.Payload, loginMsg)
-	if err != nil {
-		fmt.Printf("loginMsgHandler:err=%s\n", err.Error())
-		return
-	}
-	if loginMsg.Head != nil {
-		// 这里把login msg传送给业务层处理
-		fmt.Println("loginMsgHandler", loginMsg.Head.DeviceID)
-	}
-	// 创建定时器
-	t := AfterFunc(300*time.Second, func() {
-		clearState(cmdCtx.ConnID)
-	})
-	// 初始化链接的状态
-	connToStateTable.Store(cmdCtx.ConnID, &connState{heartTimer: t, connID: cmdCtx.ConnID})
-	sendACKMsg(message.CmdType_Login, cmdCtx.ConnID, 0, 0, "login ok")
-}
-
-func sendACKMsg(ackType message.CmdType, connID uint64, clientID uint64, code uint32, msg string) {
+// 发送ack msg
+func sendACKMsg(ackType message.CmdType, connID, clientID uint64, code uint32, msg string) {
 	ackMsg := &message.ACKMsg{}
 	ackMsg.Code = code
 	ackMsg.Msg = msg
+	ackMsg.ConnID = connID
 	ackMsg.Type = ackType
-	ackMsg.CLientID = clientID
+	ackMsg.ClientID = clientID
 	downLoad, err := proto.Marshal(ackMsg)
 	if err != nil {
 		fmt.Println("sendACKMsg", err)
@@ -205,6 +185,7 @@ func sendACKMsg(ackType message.CmdType, connID uint64, clientID uint64, code ui
 	sendMsg(connID, message.CmdType_ACK, downLoad)
 }
 
+// 发送msg
 func sendMsg(connID uint64, ty message.CmdType, downLoad []byte) {
 	mc := &message.MsgCmd{}
 	mc.Type = ty
@@ -215,4 +196,23 @@ func sendMsg(connID uint64, ty message.CmdType, downLoad []byte) {
 		fmt.Println("sendMsg", ty, err)
 	}
 	client.Push(&ctx, connID, data)
+}
+
+// 重新发送push msg
+func rePush(connID uint64) {
+	pushMsg, err := cs.getLastMsg(context.Background(), connID)
+	if err != nil {
+		panic(err)
+	}
+	if pushMsg == nil {
+		return
+	}
+	msgData, err := proto.Marshal(pushMsg)
+	if err != nil {
+		panic(err)
+	}
+	sendMsg(connID, message.CmdType_Push, msgData)
+	if state, ok := cs.loadConnIDState(connID); ok {
+		state.reSetMsgTimer(connID, pushMsg.SessionID, pushMsg.MsgID)
+	}
 }

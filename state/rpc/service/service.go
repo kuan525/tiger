@@ -1,6 +1,9 @@
 package service
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 const (
 	CancelConnCmd = 1
@@ -42,6 +45,7 @@ func (s *Service) SendMsg(ctx context.Context, sr *StateRequest) (*StateResponse
 		Endpoint: sr.GetEndpoint(),
 		PayLoad:  sr.GetData(),
 	}
+	fmt.Printf("SendMsg connID=%d, channel=%d\n", sr.ConnID, len(s.CmdChannel))
 	return &StateResponse{
 		Code: 0,
 		Msg:  "success",

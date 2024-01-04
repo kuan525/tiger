@@ -9,6 +9,7 @@ require (
 	github.com/juju/ratelimit v1.0.2
 	github.com/panjf2000/ants v1.3.0
 	github.com/prometheus/client_golang v1.11.1
+	github.com/redis/go-redis/v9 v9.3.1
 	github.com/rocket049/gocui v0.3.2
 	github.com/sony/gobreaker v0.5.0
 	github.com/spf13/cobra v1.8.0
@@ -37,6 +38,7 @@ require (
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-logr/logr v1.3.0 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

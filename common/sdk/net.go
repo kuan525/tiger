@@ -77,7 +77,7 @@ func (c *connect) reConn() {
 	c.conn = conn
 }
 
-func (c *connect) send(ty message.CmdType, payload []byte) {
+func (c *connect) send(ty message.CmdType, payload []byte) error {
 	// 直接发送给接收方
 	msgCmd := message.MsgCmd{
 		Type:    ty,
@@ -91,7 +91,8 @@ func (c *connect) send(ty message.CmdType, payload []byte) {
 		Data: msg,
 		Len:  uint32(len(msg)),
 	}
-	c.conn.Write(datapkg.Marshal())
+	_, err = c.conn.Write(datapkg.Marshal())
+	return err
 }
 
 func (c *connect) recv() <-chan *Message {
