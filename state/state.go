@@ -19,7 +19,6 @@ type connState struct {
 	msgTimer     *timingwheel.Timer
 	connID       uint64
 	msgTimerLock string
-	msgID        uint64
 	did          uint64
 }
 

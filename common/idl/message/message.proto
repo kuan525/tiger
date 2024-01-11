@@ -27,7 +27,6 @@ message UPMsg{
     bytes UPMsgBody = 2;
 }
 
-// 上行消息头 pb结构
 message UPMsgHead{
     uint64 ClientID = 1;
     uint64 ConnID = 2;
@@ -41,13 +40,13 @@ message PushMsg{
 }
 
 // 登陆消息
-message LoginMsgHead {
-    uint64 DeviceID = 1;
-}
-
 message LoginMsg {
     LoginMsgHead Head = 1;
     bytes LoginMsgBody = 2;
+}
+
+message LoginMsgHead {
+    uint64 DeviceID = 1;
 }
 
 // ACK消息
@@ -62,20 +61,21 @@ message ACKMsg {
 }
 
 // 心跳消息
-message HeartbeatMsgHead{
-}
-
 message HeartbeatMsg {
     HeartbeatMsgHead Head = 1;
     bytes HeartbeatMsgBody = 2;
 }
 
-// 重连消息
-message ReConnMsgHead {
-    uint64 ConnID = 1;
+message HeartbeatMsgHead{
 }
 
+
+// 重连消息
 message ReConnMsg {
     ReConnMsgHead Head = 1;
     bytes ReConnMsgBody = 2;
+}
+
+message ReConnMsgHead {
+    uint64 ConnID = 1;
 }

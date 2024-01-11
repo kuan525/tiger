@@ -35,7 +35,7 @@ func (dq *DelayQueue) Push(elem interface{}, expiration int64) {
 	dq.mu.Unlock()
 
 	if index == 0 {
-		// 这是优先队列中的第一个元素，如果当前在沉睡，则唤醒
+		// 当前添加的bucket的expiration最早，需要唤醒
 		if atomic.CompareAndSwapInt32(&dq.sleeping, 1, 0) {
 			dq.wakeupC <- struct{}{}
 		}
@@ -65,7 +65,10 @@ func (dq *DelayQueue) Poll(exitC chan struct{}, nowF func() int64) {
 				case <-dq.wakeupC: // 等待被唤醒
 					continue
 				case <-time.After(time.Duration(delta) * time.Millisecond): // 等待堆顶
-					if atomic.SwapInt32(&dq.sleeping, 0) == 0 { // 唤醒，并且如果原来是唤醒状态，等待wakeup
+					// 满足的情况只有一种：
+					// 此时通过push来了一个更早expiration的bucket，sleeping已经是0了，调用者就被阻塞
+					// 所以这里需要防止调用者被阻塞
+					if atomic.SwapInt32(&dq.sleeping, 0) == 0 {
 						<-dq.wakeupC
 					}
 					continue

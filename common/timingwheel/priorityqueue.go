@@ -30,7 +30,7 @@ func (pq priorityQueue) Swap(i, j int) {
 
 func (pq *priorityQueue) Push(x interface{}) {
 	n, c := len(*pq), cap(*pq)
-	if n+1 > c {
+	if n+1 > c { // 手动扩容，更可控
 		npq := make(priorityQueue, n, c*2)
 		copy(npq, *pq)
 		*pq = npq
@@ -43,7 +43,7 @@ func (pq *priorityQueue) Push(x interface{}) {
 
 func (pq *priorityQueue) Pop() interface{} {
 	n, c := len(*pq), cap(*pq)
-	if n < (c/2) && c > 25 {
+	if n < (c/2) && c > 25 { // 手动缩容
 		npq := make(priorityQueue, n, c/2)
 		copy(npq, *pq)
 		*pq = npq
@@ -63,6 +63,6 @@ func (pq *priorityQueue) PeekAndShift(mx int64) (*item, int64) {
 	if item.Priority > mx {
 		return nil, item.Priority - mx
 	}
-	heap.Remove(pq, 0)
+	heap.Remove(pq, 0) // 移除堆顶元素，返回处理
 	return item, 0
 }

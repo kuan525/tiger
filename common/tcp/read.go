@@ -17,7 +17,7 @@ func ReadData(conn *net.TCPConn) ([]byte, error) {
 	}
 
 	buffer := bytes.NewBuffer(dataLenBuf)
-	// 将数据read出来，给到dataLen，这里要将字节数组转换成io流
+	// 将buffer数据read出来，给到dataLen，这里要将字节数组转换成io流
 	if err := binary.Read(buffer, binary.BigEndian, &dataLen); err != nil {
 		return nil, fmt.Errorf("read headlen error:%s", err.Error())
 	}
