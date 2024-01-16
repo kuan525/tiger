@@ -31,6 +31,7 @@ func (nd *Event) Key() string {
 	return fmt.Sprintf("%s:%s", nd.IP, nd.Port)
 }
 
+// 一个event，对应一个endpoint的操作，增加/删除/更新
 func NewEvent(ed *discovery.EndpointInfo) *Event {
 	if ed == nil || ed.MetaData == nil {
 		return nil
@@ -43,7 +44,7 @@ func NewEvent(ed *discovery.EndpointInfo) *Event {
 		msgBytes = data.(float64) // 如果出错，此处应该panic暴露错误
 	}
 	return &Event{
-		Type:         AddNodeEvent,
+		// Type:         AddNodeEvent,
 		IP:           ed.IP,
 		Port:         ed.Port,
 		ConnectNum:   connNum,

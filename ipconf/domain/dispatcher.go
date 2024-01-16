@@ -77,6 +77,7 @@ func (dp *Dispatcher) addNode(event *source.Event) {
 		ok bool
 	)
 	if ed, ok = dp.candidateTable[event.Key()]; !ok { // 不存在
+		// soucre:event类型变为endport类型
 		ed = NewEndport(event.IP, event.Port)
 		dp.candidateTable[event.Key()] = ed
 	}

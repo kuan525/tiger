@@ -23,9 +23,10 @@ func (sw *stateWindow) getStat() *Stat {
 	return res
 }
 
+// 更新stateWindow
 func (sw *stateWindow) appendStat(s *Stat) {
-	sw.sumStat.Sub(sw.stateQueue[sw.idx%windowSize])
-	sw.stateQueue[sw.idx%windowSize] = s
-	sw.sumStat.Add(s)
-	sw.idx++
+	sw.sumStat.Sub(sw.stateQueue[sw.idx%windowSize]) // 没有则不减
+	sw.stateQueue[sw.idx%windowSize] = s             // 环形数组，更新
+	sw.sumStat.Add(s)                                // 加入
+	sw.idx++                                         // 环形指针
 }

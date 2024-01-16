@@ -12,13 +12,16 @@ func Init() {
 	eventChan = make(chan *Event)
 	ctx := context.Background()
 
+	// 这里异步去做，因为要快速启动，同时防止非阻塞队列 eventChan 导致卡死
 	go DataHandler(&ctx)
 
+	// 测试环境，手动加入几个注册节点
 	if config.IsDebug() {
 		ctx := context.Background()
-		testServiceRegister(&ctx, "7896", "node1")
-		testServiceRegister(&ctx, "7897", "node2")
-		testServiceRegister(&ctx, "7898", "node3")
+		// testServiceRegister(&ctx, "7896", "node1")
+		// testServiceRegister(&ctx, "7897", "node2")
+		// testServiceRegister(&ctx, "7898", "node3")
+		testServiceRegisterClose(&ctx, "7900", "node5")
 	}
 }
 
@@ -52,6 +55,7 @@ func DataHandler(ctx *context.Context) {
 			logger.CtxErrorf(*ctx, "dataHandler,delFunc,err :%s", err.Error())
 		}
 	}
+	// 给定一个前缀，去set/del
 	err := dis.WatchService(config.GetServicePathForIpConf(), setFunc, delFunc)
 	if err != nil {
 		panic(err)

@@ -49,7 +49,7 @@ func (s *ServiceDiscovery) WatchService(prefix string, set, del func(key, value 
 
 // 监听前缀
 func (s *ServiceDiscovery) watcher(prefix string, rev int64, set, del func(key, value string)) {
-	rch := s.cli.Watch(*s.ctx, prefix, clientv3.WithPrefix(), clientv3.WithRev(rev))
+	rch := s.cli.Watch(*s.ctx, prefix, clientv3.WithPrefix(), clientv3.WithRev(rev), clientv3.WithPrevKV())
 	logger.CtxInfof(*s.ctx, "watching prefix:%s now...", prefix)
 	for wresp := range rch {
 		for _, ev := range wresp.Events {
@@ -57,7 +57,7 @@ func (s *ServiceDiscovery) watcher(prefix string, rev int64, set, del func(key, 
 			case mvccpb.PUT: // 修改或者新增
 				set(string(ev.Kv.Key), string(ev.Kv.Value))
 			case mvccpb.DELETE: // 删除
-				del(string(ev.Kv.Key), string(ev.Kv.Value))
+				del(string(ev.Kv.Key), string(ev.PrevKv.Value))
 			}
 		}
 	}

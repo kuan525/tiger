@@ -4,8 +4,8 @@ import "math"
 
 // 数值代表的是，此endpoint对应的机器其自身剩余的资源指标
 type Stat struct {
-	ConnectNum   float64
-	MessageBytes float64
+	MessageBytes float64 // 活跃分 gateway 每秒钟收发字节数的 剩余值
+	ConnectNum   float64 // 静态分 gateway 总体持有的长连接数量的 剩余值
 }
 
 func (s *Stat) CalculateActiveSorce() float64 {
@@ -46,16 +46,6 @@ func getGB(m float64) float64 {
 
 func decimal(value float64) float64 {
 	return math.Trunc(value*1e2+0.5) * 1e-2
-}
-
-func min(a, b, c float64) float64 {
-	if a < b && a < c {
-		return a
-	} else if b < c {
-		return b
-	} else {
-		return c
-	}
 }
 
 func (s *Stat) CalculateStaticSorce() float64 {
