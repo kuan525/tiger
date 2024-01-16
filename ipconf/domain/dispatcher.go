@@ -9,7 +9,7 @@ import (
 
 type Dispatcher struct {
 	// 通过source中的event的channel修改，后续从这个里面取数据
-	candidateTable map[string]*Endport
+	candidateTable map[string]*Endpoint
 	sync.RWMutex
 }
 
@@ -17,7 +17,7 @@ var dp *Dispatcher
 
 func Init() {
 	dp = &Dispatcher{}
-	dp.candidateTable = make(map[string]*Endport)
+	dp.candidateTable = make(map[string]*Endpoint)
 	go func() {
 		// 这里获取的是source中存储event的channel，在调度层处理
 		for event := range source.EventChan() {
@@ -31,7 +31,7 @@ func Init() {
 	}()
 }
 
-func Dispatch(ctx *IpConfContext) []*Endport {
+func Dispatch(ctx *IpConfContext) []*Endpoint {
 	// step1 获取候选endport
 	eds := dp.getCandidateEndport(ctx)
 	// step2 逐一计算得分
@@ -52,11 +52,11 @@ func Dispatch(ctx *IpConfContext) []*Endport {
 	return eds
 }
 
-func (dp *Dispatcher) getCandidateEndport(ctx *IpConfContext) []*Endport {
+func (dp *Dispatcher) getCandidateEndport(ctx *IpConfContext) []*Endpoint {
 	dp.RLock()
 	defer dp.RUnlock()
 	// 这里先将map中的所有都拷贝出来，后续再操作，这里网关机器数量才是瓶颈
-	candidateList := make([]*Endport, 0, len(dp.candidateTable))
+	candidateList := make([]*Endpoint, 0, len(dp.candidateTable))
 	for _, ed := range dp.candidateTable {
 		candidateList = append(candidateList, ed)
 	}
@@ -73,7 +73,7 @@ func (dp *Dispatcher) addNode(event *source.Event) {
 	dp.Lock()
 	defer dp.Unlock()
 	var (
-		ed *Endport
+		ed *Endpoint
 		ok bool
 	)
 	if ed, ok = dp.candidateTable[event.Key()]; !ok { // 不存在

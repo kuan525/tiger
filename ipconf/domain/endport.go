@@ -5,7 +5,7 @@ import (
 	"unsafe"
 )
 
-type Endport struct {
+type Endpoint struct {
 	IP          string       `json:"ip"`
 	Port        string       `json:"port"`
 	ActiveSorce float64      `json:"-"`
@@ -14,8 +14,8 @@ type Endport struct {
 	window      *stateWindow `json:"-"`
 }
 
-func NewEndport(ip, port string) *Endport {
-	ed := &Endport{
+func NewEndport(ip, port string) *Endpoint {
+	ed := &Endpoint{
 		IP:   ip,
 		Port: port,
 	}
@@ -35,11 +35,11 @@ func NewEndport(ip, port string) *Endport {
 	return ed
 }
 
-func (ed *Endport) UpdateStat(s *Stat) {
+func (ed *Endpoint) UpdateStat(s *Stat) {
 	ed.window.statChan <- s
 }
 
-func (ed *Endport) CalculateScore(ctx *IpConfContext) {
+func (ed *Endpoint) CalculateScore(ctx *IpConfContext) {
 	// 如果stats字端是空的，则直接使用上一次计算的结果，此次不更新
 	// 正常情况下stats非空，每一次更新状态的时候都会更新
 	if ed.Stats != nil {

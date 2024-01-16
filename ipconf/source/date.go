@@ -18,10 +18,10 @@ func Init() {
 	// 测试环境，手动加入几个注册节点
 	if config.IsDebug() {
 		ctx := context.Background()
-		// testServiceRegister(&ctx, "7896", "node1")
-		// testServiceRegister(&ctx, "7897", "node2")
-		// testServiceRegister(&ctx, "7898", "node3")
-		testServiceRegisterClose(&ctx, "7900", "node5")
+		testServiceRegister(&ctx, "7896", "node1")
+		testServiceRegister(&ctx, "7897", "node2")
+		testServiceRegister(&ctx, "7898", "node3")
+		// testServiceRegisterClose(&ctx, "7900", "node5")
 	}
 }
 
