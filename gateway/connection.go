@@ -19,6 +19,7 @@ const (
 	twepoch = int64(1589923200000) // 常量时间戳（毫秒）
 )
 
+// ConnId生成器
 type ConnIDGenerater struct {
 	mu        sync.Mutex
 	LastStamp int64 // 记录上一次ID的时间戳
@@ -83,13 +84,14 @@ func (w *ConnIDGenerater) nextID() (uint64, error) {
 		return 0, errors.New("time is moving backwards, waiting untill")
 	}
 	if w.LastStamp == timeStamp {
-		w.Sequence = (w.Sequence + 1) & maxSequence
-		if w.Sequence == 0 { // 如果这里发生溢出，就等到下一个毫秒再分配，这样就一定出现重复
+		w.Sequence = w.Sequence + 1
+		if w.Sequence == maxSequence { // 如果这里发生溢出，就等到下一个毫秒再分配，这样就一定不会出现重复
 			for timeStamp <= w.LastStamp {
 				timeStamp = w.getMilliSeconds()
 			}
+			w.Sequence = 0
 		}
-	} else { // 如果与上次分配的时间戳不等，则为了防止可能的时钟漂移现象，就必须重新计数
+	} else {
 		w.Sequence = 0
 	}
 	w.LastStamp = timeStamp

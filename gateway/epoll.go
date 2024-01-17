@@ -72,7 +72,7 @@ func (e *ePool) createAcceptProcess() {
 					_ = conn.Close()
 					continue
 				}
-				setTcpConfig(conn)
+				setTcpConfig(conn) // KeepAlive
 				if err != nil {
 					if nerr, ok := err.(net.Error); ok && nerr.Temporary() {
 						fmt.Errorf("accept temp err: %v", nerr)
@@ -80,7 +80,9 @@ func (e *ePool) createAcceptProcess() {
 					}
 					fmt.Errorf("accept err: %v", e)
 				}
+				// 新建一个链接，并派发conn.id
 				c := NewConnection(conn)
+				// 通过channel的方式
 				e.addTask(c)
 			}
 		}()
@@ -92,6 +94,7 @@ func (e *ePool) addTask(c *connection) {
 }
 
 func (e *ePool) startEPool() {
+	// epoller的数量
 	for i := 0; i < e.eSize; i++ {
 		go e.startEProc()
 	}
@@ -99,18 +102,18 @@ func (e *ePool) startEPool() {
 
 // 轮训器池 处理器
 func (e *ePool) startEProc() {
+	// 创建一个新epoller
 	eper, err := newEpoller()
 	if err != nil {
 		panic(err)
 	}
+	// addTask事件，当前epoller中添加conn
 	go func() {
 		for {
 			select {
 			case <-e.done:
 				return
 			case conn := <-e.eChan:
-				addTcpNum()
-				fmt.Printf("tcpNum:%d\n", getTcpNum())
 				if err := eper.add(conn); err != nil {
 					fmt.Printf("failed to add connection %v\n", err)
 					conn.Close() //登陆未成功直接关闭连接
@@ -121,12 +124,15 @@ func (e *ePool) startEProc() {
 		}
 	}()
 	// 轮训器在这里轮训等待，当有wait发生时则调用回调函数去处理
+	// 当前epoller等待200ms的conn，然后一起处理，最多100个（epoll_wait_queue_size）
 	for {
 		select {
 		case <-e.done:
 			return
 		default:
-			connections, err := eper.wait(200) // 200ms一次轮训避免忙轮训
+			// 200ms一次轮训避免忙轮训
+			connections, err := eper.wait(200)
+			// 非空，且不是系统中断，则错误
 			if err != nil && err != syscall.EINTR {
 				fmt.Printf("failed to epoll wait %v\n", err)
 				continue
@@ -135,6 +141,7 @@ func (e *ePool) startEProc() {
 				if conn == nil {
 					break
 				}
+				// runProc函数
 				e.f(conn, eper)
 			}
 		}
@@ -143,10 +150,11 @@ func (e *ePool) startEProc() {
 
 // 对象，轮训器
 type epoller struct {
-	fd            int
-	fdToConnTable sync.Map
+	fd            int      // epoll实例的文件描述符
+	fdToConnTable sync.Map // 文件描述符映射到链接
 }
 
+// 创建epoller实例
 func newEpoller() (*epoller, error) {
 	fd, err := unix.EpollCreate1(0)
 	if err != nil {
@@ -155,32 +163,45 @@ func newEpoller() (*epoller, error) {
 	return &epoller{fd: fd}, nil
 }
 
-// TODO: 默认水平出发模式，可采用非阻塞FD，优化边沿出发模式
 func (e *epoller) add(conn *connection) error {
+	addTcpNum()
+	fmt.Printf("tcpNum:%d\n", getTcpNum())
+
 	fd := conn.fd
+	// 将链接的文件描述符fd添加到实例epoller中，并制定事件“unix.EPOLLIN”，“unix.EPOLLHUP”
+	// unix.EPOLLIN：表示文件描述符上有数据可读
+	// unix.EPOLLHUP：表示挂起（hang up）事件
 	err := unix.EpollCtl(e.fd, syscall.EPOLL_CTL_ADD, fd,
 		&unix.EpollEvent{Events: unix.EPOLLIN | unix.EPOLLHUP, Fd: int32(fd)})
 	if err != nil {
 		return err
 	}
+	// 存储epoller：fd -> conn
 	e.fdToConnTable.Store(conn.fd, conn)
+	// 大表 epool：conn.id -> conn
 	ep.tables.Store(conn.id, conn)
+	// 反向绑定
 	conn.BindEpoller(e)
 	return nil
 }
 
 func (e *epoller) remove(conn *connection) error {
 	subTcpNum()
+	fmt.Printf("tcpNum:%d\n", getTcpNum())
+
 	fd := conn.fd
+	// epoller实例中移除conn（通过conn.fd）
 	err := unix.EpollCtl(e.fd, syscall.EPOLL_CTL_DEL, fd, nil)
 	if err != nil {
 		return err
 	}
+	// 从两张表中删除链接信息
 	ep.tables.Delete(conn.id)
 	e.fdToConnTable.Delete(conn.fd)
 	return nil
 }
 
+// 等待epoll实例上的事件，持续指定的时间，防止忙轮训
 func (e *epoller) wait(msec int) ([]*connection, error) {
 	events := make([]unix.EpollEvent, config.GetGatewayEpollWaitQueueSize())
 	n, err := unix.EpollWait(e.fd, events, msec)

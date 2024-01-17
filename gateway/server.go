@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc"
 )
 
+// 接受state指令的通道
 var cmdChannel chan *service.CmdContext
 
 // 启动网关服务 [配置文件路径]
@@ -54,7 +55,7 @@ func runProc(c *connection, eper *epoller) {
 	dataBuf, err := tcp.ReadData(c.conn)
 	if err != nil {
 		// 如果读取conn时发现连接关闭，则直接关闭端口连接
-		// 通知state清理掉以为退出的conn的状态信息
+		// 通知state清理掉意外退出的conn的状态信息
 		if errors.Is(err, io.EOF) {
 			// 这个操作是异步的，不需要等到返回成功再执行，因为消息可靠性的保障是通过协议完成的而非某次cmd
 			eper.remove(c)

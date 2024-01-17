@@ -2,13 +2,6 @@ package etcd
 
 import "time"
 
-var defaultOptions = Options{
-	endpoints:              []string{"127.0.0.1:2379"},
-	dialTimeout:            10 * time.Second,
-	syncFlushCacheInterval: 10 * time.Second,
-	keepAliveInterval:      10,
-}
-
 type Options struct {
 	syncFlushCacheInterval             time.Duration
 	endpoints                          []string
@@ -17,6 +10,14 @@ type Options struct {
 	registerServiceOrKeepAliveInterval time.Duration
 }
 
+var defaultOptions = Options{
+	endpoints:              []string{"127.0.0.1:2379"},
+	dialTimeout:            10 * time.Second,
+	syncFlushCacheInterval: 10 * time.Second,
+	keepAliveInterval:      10,
+}
+
+// 定义一系列修改options的方法，作为插销，后续一个个运行
 type Option func(o *Options)
 
 func WithEndpoints(endpoints []string) Option {

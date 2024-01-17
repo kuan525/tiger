@@ -16,7 +16,7 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-const KeyPrefix = "tiger/grpcwrapper"
+const KeyPrefix = "tiger/tgrpc"
 
 // Register
 type Register struct {
@@ -58,7 +58,7 @@ func NewETCDRegister(opts ...Option) (discov.Discovery, error) {
 	return r, nil
 }
 
-// 初始化todo需要改造从viper配置中读取endpoints
+// 初始化cli，同时开启监听Register中唯二的队列
 func (r *Register) Init(ctx context.Context) error {
 	var err error
 	r.cli, err = clientv3.New(
@@ -69,6 +69,7 @@ func (r *Register) Init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// 开启监听
 	go r.run()
 	return nil
 }
@@ -87,7 +88,7 @@ func (r *Register) run() {
 				}
 			}
 		case service := <-r.serviceUnRegisterCh:
-			if _, ok := r.registerServices[service.Name]; !ok {
+			if _, ok := r.registerServices[service.Name]; !ok { // 无则不处理，打个日志
 				logger.CtxErrorf(context.TODO(), "UnRegisterService err, service %v was not registered", service.Name)
 				continue
 			}
@@ -111,6 +112,7 @@ func (r *Register) registerServiceOrKeepAlive(ctx context.Context) {
 }
 
 func (r *Register) registerService(ctx context.Context, service *registerService) {
+	// 获取一个租约
 	leaseGrantResp, err := r.cli.Grant(ctx, r.keepAliveInterval)
 	if err != nil {
 		logger.CtxErrorf(ctx, "register service grant, err:%v", err)
@@ -133,6 +135,7 @@ func (r *Register) registerService(ctx context.Context, service *registerService
 		}
 	}
 
+	// 设置一个通道，定期发送心跳消息保持租约有效
 	keepAliveCh, err := r.cli.KeepAlive(ctx, leaseGrantResp.ID)
 	if err != nil {
 		logger.CtxErrorf(ctx, "register service keepalive,err:%v", err)
@@ -312,7 +315,7 @@ func (r *Register) GetService(ctx context.Context, name string) *discov.Service 
 		return val
 	}
 
-	// 防止并发获取service倒置cache中的数据混乱
+	// 防止并发获取service导致cache中的数据混乱
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
