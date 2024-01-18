@@ -42,6 +42,7 @@ func NewClient(serviceName string, interceptors ...grpc.UnaryClientInterceptor) 
 		p.d = dis
 	}
 
+	// 注册名称解析器
 	resolver.Register(presolver.NewDiscovBuilder(p.d))
 
 	conn, err := p.dial()
@@ -55,6 +56,7 @@ func (p *PClient) Conn() *grpc.ClientConn {
 }
 
 func (p *PClient) dial() (*grpc.ClientConn, error) {
+	// Round Robin负载均衡策略
 	svcCfg := fmt.Sprintf(`{"loadBalancingPolicy":"%s"}`, roundrobin.Name)
 	balancerOpt := grpc.WithDefaultServiceConfig(svcCfg)
 
@@ -88,6 +90,8 @@ func (p *PClient) DialByEndPoint(adrss string) (*grpc.ClientConn, error) {
 		grpc.WithInsecure(),
 	}
 
-	ctx, _ := context.WithTimeout(context.Background(), dialTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
+	defer cancel()
+
 	return grpc.DialContext(ctx, adrss, options...)
 }

@@ -2,13 +2,12 @@ package client
 
 import (
 	"context"
+	"time"
 
 	"github.com/kuan525/tiger/common/tgrpc/prome"
 	"github.com/kuan525/tiger/common/tgrpc/util"
 
 	"github.com/prometheus/client_golang/prometheus"
-
-	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"

@@ -20,14 +20,16 @@ const KeyPrefix = "tiger/tgrpc"
 
 // Register
 type Register struct {
-	Options
-	cli                 *clientv3.Client
+	Options // etcd的一些信息
+	cli     *clientv3.Client
+
 	serviceRegisterCh   chan *discov.Service
 	serviceUnRegisterCh chan *discov.Service
-	lock                sync.Mutex
-	downServices        atomic.Value
-	registerServices    map[string]*registerService
-	listeners           []func()
+
+	lock             sync.Mutex
+	downServices     atomic.Value
+	registerServices map[string]*registerService
+	listeners        []func()
 }
 
 type registerService struct {
@@ -80,7 +82,7 @@ func (r *Register) run() {
 		case service := <-r.serviceRegisterCh:
 			if _, ok := r.registerServices[service.Name]; ok {
 				r.registerServices[service.Name].service.Endpoints = append(r.registerServices[service.Name].service.Endpoints, service.Endpoints...)
-				r.registerServices[service.Name].isRegistered = false // 重新上报到etcd
+				r.registerServices[service.Name].isRegistered = false
 			} else {
 				r.registerServices[service.Name] = &registerService{
 					service:      service,
@@ -90,10 +92,11 @@ func (r *Register) run() {
 		case service := <-r.serviceUnRegisterCh:
 			if _, ok := r.registerServices[service.Name]; !ok { // 无则不处理，打个日志
 				logger.CtxErrorf(context.TODO(), "UnRegisterService err, service %v was not registered", service.Name)
-				continue
+			} else {
+				r.unRegisterService(context.TODO(), service)
 			}
-			r.unRegisterService(context.TODO(), service)
 		default:
+			// 这里轮训，全量刷新
 			r.registerServiceOrKeepAlive(context.TODO())
 			time.Sleep(r.registerServiceOrKeepAliveInterval)
 		}
@@ -102,10 +105,11 @@ func (r *Register) run() {
 
 func (r *Register) registerServiceOrKeepAlive(ctx context.Context) {
 	for _, service := range r.registerServices {
-		if !service.isRegistered {
+		if !service.isRegistered { // 未上报
 			r.registerService(ctx, service)
 			r.registerServices[service.service.Name].isRegistered = true
 		} else {
+			// r.cli.KeepAlive返回的channel中的数据不处理，会阻塞，则不会续期
 			r.KeepAlive(ctx, service)
 		}
 	}
@@ -128,6 +132,7 @@ func (r *Register) registerService(ctx context.Context, service *registerService
 			continue
 		}
 
+		// 每一个endpoint都推上去
 		_, err = r.cli.Put(ctx, key, string(raw), clientv3.WithLease(leaseGrantResp.ID))
 		if err != nil {
 			logger.CtxErrorf(ctx, "register service err,err:%v, register data:%v", err, string(raw))
@@ -135,7 +140,7 @@ func (r *Register) registerService(ctx context.Context, service *registerService
 		}
 	}
 
-	// 设置一个通道，定期发送心跳消息保持租约有效
+	// 设置一个通道，定期发送心跳消息保持租约有效，自动续期租约
 	keepAliveCh, err := r.cli.KeepAlive(ctx, leaseGrantResp.ID)
 	if err != nil {
 		logger.CtxErrorf(ctx, "register service keepalive,err:%v", err)
@@ -147,9 +152,9 @@ func (r *Register) registerService(ctx context.Context, service *registerService
 
 func (r *Register) unRegisterService(ctx context.Context, service *discov.Service) {
 	endpoints := make([]*discov.Endpoint, 0)
-	for _, endpoint := range r.registerServices[service.Name].service.Endpoints {
+	for _, endpoint := range r.registerServices[service.Name].service.Endpoints { // 所有endpoint
 		var isRemove bool
-		for _, unRegisterEndpoint := range service.Endpoints {
+		for _, unRegisterEndpoint := range service.Endpoints { // 要移除的endpoint
 			if endpoint.IP == unRegisterEndpoint.IP && endpoint.Port == unRegisterEndpoint.Port {
 				_, err := r.cli.Delete(context.TODO(), r.getEtcdRegisterKey(service.Name, endpoint.IP, endpoint.Port))
 				if err != nil {
@@ -181,6 +186,7 @@ func (r *Register) KeepAlive(ctx context.Context, service *registerService) {
 	}
 }
 
+// downServices中没有，会进入一次，监听变化，再修改downService，通知Listeners
 func (r *Register) watch(ctx context.Context, key string, revision int64) {
 	rch := r.cli.Watch(ctx, key, clientv3.WithRev(revision), clientv3.WithPrefix())
 	for n := range rch {
@@ -218,28 +224,30 @@ func (r *Register) updateDownService(service *discov.Service) {
 	defer r.lock.Unlock()
 
 	downServices := r.downServices.Load().(map[string]*discov.Service)
+	// 如果不存在，则加入，然后退出，不需要通知Listeners
 	if _, ok := downServices[service.Name]; !ok {
 		downServices[service.Name] = service
 		r.downServices.Store(downServices)
 		return
 	}
 
+	// 新的endpoint加入downservice
 	for _, newAddEndpoint := range service.Endpoints {
 		var isExist bool
 		for idx, endpoint := range downServices[service.Name].Endpoints {
 			if newAddEndpoint.IP == endpoint.IP && newAddEndpoint.Port == endpoint.Port {
-				downServices[service.Name].Endpoints[idx] = newAddEndpoint
-				isExist = true
+				downServices[service.Name].Endpoints[idx] = newAddEndpoint // 更新
+				isExist = true                                             // 标记存在
 				break
 			}
 		}
-		if !isExist {
+		if !isExist { // 如果不存在，则加入
 			downServices[service.Name].Endpoints = append(downServices[service.Name].Endpoints, newAddEndpoint)
 		}
 	}
-
 	r.downServices.Store(downServices)
 
+	// 通知Listeners，更新一下
 	r.NotifyListeners()
 }
 
@@ -267,6 +275,7 @@ func (r *Register) delDownService(service *discov.Service) {
 	downServices[service.Name].Endpoints = endpoints
 	r.downServices.Store(downServices)
 
+	// 修改之后，通知Listeners
 	r.NotifyListeners()
 }
 
@@ -286,12 +295,13 @@ func (r *Register) getEtcdRegisterPrefixKey(name string) string {
 	return fmt.Sprintf(KeyPrefix+"%s", name)
 }
 
+// name ip port
 func (r *Register) getServiceNameByEtcdKey(key string) (string, string, int) {
 	trimStr := strings.TrimPrefix(key, KeyPrefix)
 	strs := strings.Split(trimStr, "/")
 
-	ip, _ := strconv.Atoi(strs[2])
-	return strs[0], strs[1], ip
+	port, _ := strconv.Atoi(strs[2])
+	return strs[0], strs[1], port
 }
 
 // ----------------------------------------------
@@ -309,8 +319,10 @@ func (r *Register) UnRegister(ctx context.Context, service *discov.Service) {
 	r.serviceUnRegisterCh <- service
 }
 
+// 这里会更新一下 downServices
 func (r *Register) GetService(ctx context.Context, name string) *discov.Service {
 	allServices := r.getDownServices()
+	// 先从本地拉，再从etcd拉
 	if val, ok := allServices[name]; ok {
 		return val
 	}

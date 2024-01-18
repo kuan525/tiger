@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const nameSpace = "grpcwrapper_server"
+const nameSpace = "tgrpc_server"
 
 var (
 	serverHandleCounter = prome.NewCounterVec(
@@ -34,10 +34,12 @@ var (
 	)
 )
 
+// 记录请求开始的时间，调用原始的处理函数，然后记录请求处理的时间和错误代码
 func MetricUnaryServerInterceptor(serverName string) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
 		beg := time.Now()
 		resp, err = handler(ctx, req)
+
 		code := status.Code(err)
 		serverHandleCounter.WithLabelValues(info.FullMethod, serverName, code.String(), util.ExternaIP()).Inc()
 		serverHandleHistogram.WithLabelValues(info.FullMethod, serverName, util.ExternaIP()).Observe(time.Since(beg).Seconds())

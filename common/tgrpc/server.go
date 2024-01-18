@@ -78,6 +78,7 @@ func NewServer(opts ...ServerOption) *PServer {
 		o(&opt)
 	}
 
+	// 服务发现
 	if opt.d == nil {
 		dis, err := plugin.GetDiscovInstance()
 		if err != nil {
@@ -110,19 +111,6 @@ func (p *PServer) RegisterUnaryServerInterceptor(i grpc.UnaryServerInterceptor) 
 
 // 开启server
 func (p *PServer) Start(ctx context.Context) {
-	service := discov.Service{
-		Name: p.serviceName,
-		Endpoints: []*discov.Endpoint{
-			{
-				ServiceName: p.serviceName,
-				IP:          p.ip,
-				Port:        p.port,
-				Weight:      p.weight,
-				Enable:      true,
-			},
-		},
-	}
-
 	// 加载中间件
 	interceptors := []grpc.UnaryServerInterceptor{
 		serverinterceptor.RecoveryUnaryServerInterceptor(),
@@ -149,10 +137,28 @@ func (p *PServer) Start(ctx context.Context) {
 		}
 	}()
 	// 服务注册
+	service := discov.Service{
+		Name: p.serviceName,
+		Endpoints: []*discov.Endpoint{
+			{
+				ServiceName: p.serviceName,
+				IP:          p.ip,
+				Port:        p.port,
+				Weight:      p.weight,
+				Enable:      true,
+			},
+		},
+	}
 	p.d.Register(ctx, &service)
+	logger.Info("start tgrpcRCP success")
 
-	logger.Info("start GrpcWrapperRCP success")
-
+	/*
+		FROM: gpt
+		SIGHUP: 通常在终端关闭或挂起时发送。
+		SIGQUIT: 产生 core dump。
+		SIGTERM: 请求进程终止。
+		SIGINT: 接收到中断信号，通常由 Ctrl+C 产生。
+	*/
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGINT)
 	for {

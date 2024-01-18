@@ -4,10 +4,10 @@ import "time"
 
 type Options struct {
 	syncFlushCacheInterval             time.Duration
-	endpoints                          []string
 	dialTimeout                        time.Duration
-	keepAliveInterval                  int64
 	registerServiceOrKeepAliveInterval time.Duration
+	endpoints                          []string
+	keepAliveInterval                  int64
 }
 
 var defaultOptions = Options{

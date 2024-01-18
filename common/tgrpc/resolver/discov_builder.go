@@ -25,8 +25,9 @@ func (d *DiscovBuilder) Scheme() string {
 }
 
 func (d *DiscovBuilder) Build(target resolver.Target, cc resolver.ClientConn, _ resolver.BuildOptions) (resolver.Resolver, error) {
-	d.discov.GetService(context.TODO(), d.getServiceName(target))
 	serviceName := d.getServiceName(target)
+	d.discov.GetService(context.TODO(), serviceName)
+
 	listener := func() {
 		service := d.discov.GetService(context.TODO(), serviceName)
 		var addrs []resolver.Address
@@ -53,7 +54,6 @@ func (d *DiscovBuilder) getServiceName(target resolver.Target) string {
 }
 
 func (d *DiscovBuilder) Close() {
-
 }
 
 func (d *DiscovBuilder) ResolveNow(options resolver.ResolveNowOptions) {
